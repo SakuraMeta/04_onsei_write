@@ -88,6 +88,43 @@
             box-shadow: 0 10px 20px rgba(255, 152, 0, 0.3);
         }
 
+        .test-btn {
+            background: linear-gradient(45deg, #9c27b0, #7b1fa2);
+            color: white;
+        }
+
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(156, 39, 176, 0.3);
+        }
+
+        .network-status {
+            text-align: center;
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+        }
+
+        .network-indicator {
+            font-size: 12px;
+            margin-right: 8px;
+        }
+
+        .network-indicator.online {
+            color: #4caf50;
+        }
+
+        .network-indicator.offline {
+            color: #f44336;
+        }
+
+        .network-indicator.testing {
+            color: #ff9800;
+            animation: pulse 1s infinite;
+        }
+
         .status {
             text-align: center;
             margin-bottom: 20px;
@@ -181,6 +218,15 @@
             margin: 10px 0;
             border-left: 4px solid #f44336;
         }
+
+        .info {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #2196f3;
+        }
     </style>
 </head>
 <body>
@@ -191,6 +237,12 @@
             <button id="startBtn" class="start-btn">録音開始</button>
             <button id="stopBtn" class="stop-btn" disabled>録音停止</button>
             <button id="clearBtn" class="clear-btn">履歴クリア</button>
+            <button id="testBtn" class="test-btn">接続テスト</button>
+        </div>
+
+        <div id="networkStatus" class="network-status">
+            <span id="networkIndicator" class="network-indicator">●</span>
+            <span id="networkText">接続状態を確認中...</span>
         </div>
 
         <div id="status" class="status connected">接続中...</div>
@@ -215,9 +267,24 @@
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const clearBtn = document.getElementById('clearBtn');
+        const testBtn = document.getElementById('testBtn');
         const status = document.getElementById('status');
         const transcriptionArea = document.getElementById('transcriptionArea');
         const recordingIndicator = document.getElementById('recordingIndicator');
+        const networkIndicator = document.getElementById('networkIndicator');
+        const networkText = document.getElementById('networkText');
+
+        // ページ読み込み時にネットワーク状態をチェック
+        checkNetworkStatus();
+        
+        // オンライン/オフライン状態の監視
+        window.addEventListener('online', () => {
+            updateNetworkStatus(true, 'オンライン - 音声認識が利用可能');
+        });
+        
+        window.addEventListener('offline', () => {
+            updateNetworkStatus(false, 'オフライン - インターネット接続を確認してください');
+        });
 
         // Web Speech API の初期化
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -263,7 +330,46 @@
             
             recognition.onerror = function(event) {
                 console.error('音声認識エラー:', event.error);
-                addError('音声認識エラー: ' + event.error);
+                
+                let errorMessage = '音声認識エラー: ' + event.error;
+                let suggestion = '';
+                
+                switch(event.error) {
+                    case 'network':
+                        errorMessage = 'ネットワークエラー: インターネット接続を確認してください';
+                        suggestion = '・ インターネット接続を確認<br>・ VPNやファイアウォールの設定を確認<br>・ しばらく待ってから再試行';
+                        break;
+                    case 'not-allowed':
+                        errorMessage = 'マイクアクセスが拒否されました';
+                        suggestion = '・ ブラウザのマイク許可を確認<br>・ アドレスバーのマイクアイコンをクリックして許可';
+                        break;
+                    case 'no-speech':
+                        errorMessage = '音声が検出されませんでした';
+                        suggestion = '・ マイクの音量を確認<br>・ よりはっきりと話してください';
+                        break;
+                    case 'audio-capture':
+                        errorMessage = 'オーディオキャプチャエラー';
+                        suggestion = '・ マイクが正しく接続されているか確認<br>・ 他のアプリがマイクを使用していないか確認';
+                        break;
+                    case 'service-not-allowed':
+                        errorMessage = '音声認識サービスが利用できません';
+                        suggestion = '・ ブラウザを更新してください<br>・ Chrome、Edge、Safariの最新版をお試しください';
+                        break;
+                    default:
+                        suggestion = '・ ブラウザを再読み込みしてください<br>・ シークレットモードでないことを確認';
+                }
+                
+                addError(errorMessage, suggestion);
+                
+                // ネットワークエラーの場合、自動再試行を提案
+                if (event.error === 'network') {
+                    setTimeout(() => {
+                        if (confirm('ネットワークエラーが発生しました。自動で再試行しますか？')) {
+                            checkNetworkAndRetry();
+                        }
+                    }, 2000);
+                }
+                
                 stopRecording();
             };
             
@@ -341,6 +447,13 @@
             });
         }
 
+        // 接続テスト
+        if (testBtn) {
+            testBtn.addEventListener('click', function() {
+                checkNetworkStatus(true);
+            });
+        }
+
         function stopRecording() {
             if (recognition && isRecording) {
                 recognition.stop();
@@ -391,11 +504,106 @@
             transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
         }
 
+        // ネットワーク状態を更新
+        function updateNetworkStatus(isOnline, message) {
+            if (isOnline) {
+                networkIndicator.className = 'network-indicator online';
+                networkText.textContent = message;
+            } else {
+                networkIndicator.className = 'network-indicator offline';
+                networkText.textContent = message;
+            }
+        }
+        
+        // ネットワーク状態をチェック
+        function checkNetworkStatus(showDetails = false) {
+            if (showDetails) {
+                networkIndicator.className = 'network-indicator testing';
+                networkText.textContent = 'ネットワーク接続をテスト中...';
+                addInfo('ネットワーク接続テストを開始します...');
+            }
+            
+            // 基本的なオンライン状態をチェック
+            if (!navigator.onLine) {
+                updateNetworkStatus(false, 'オフライン - インターネット接続がありません');
+                if (showDetails) {
+                    addError('インターネット接続がありません', 'WiFi/有線接続を確認してください');
+                }
+                return;
+            }
+            
+            // Google APIへの接続テスト
+            fetch('https://www.google.com/favicon.ico', {
+                method: 'HEAD',
+                mode: 'no-cors',
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(5000)
+            })
+            .then(() => {
+                updateNetworkStatus(true, 'オンライン - 音声認識が利用可能');
+                if (showDetails) {
+                    addInfo('✅ ネットワーク接続テスト成功 - 音声認識が利用可能です');
+                }
+            })
+            .catch((error) => {
+                updateNetworkStatus(false, 'ネットワークエラー - 接続に問題があります');
+                if (showDetails) {
+                    addError('ネットワーク接続テストに失敗しました', 
+                        '・ WiFi/有線接続を確認<br>・ プロキシ設定を確認<br>・ ファイアウォール設定を確認<br>・ VPN接続を確認');
+                }
+            });
+        }
+
+        // ネットワーク接続チェック（再試行用）
+        function checkNetworkAndRetry() {
+            addInfo('ネットワーク接続を確認しています...');
+            
+            // オンライン状態をチェック
+            if (!navigator.onLine) {
+                addError('インターネット接続がありません', 'ネットワーク接続を確認してから再試行してください');
+                return;
+            }
+            
+            // Google APIへの接続テスト
+            fetch('https://www.google.com/favicon.ico', {
+                method: 'HEAD',
+                mode: 'no-cors',
+                cache: 'no-cache'
+            })
+            .then(() => {
+                addInfo('ネットワーク接続OK - 音声認識を再開します');
+                setTimeout(() => {
+                    if (!isRecording) {
+                        startBtn.click();
+                    }
+                }, 1000);
+            })
+            .catch(() => {
+                addError('インターネット接続に問題があります', 
+                    '・ WiFi/有線接続を確認<br>・ プロキシ設定を確認<br>・ ファイアウォール設定を確認');
+            });
+        }
+        
+        // 情報メッセージを表示
+        function addInfo(message) {
+            const info = document.createElement('div');
+            info.className = 'info';
+            info.textContent = message;
+            transcriptionArea.appendChild(info);
+            transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+        }
+
         // エラーメッセージを表示
-        function addError(message) {
+        function addError(message, suggestion = '') {
             const error = document.createElement('div');
             error.className = 'error';
-            error.textContent = message;
+            
+            let content = message;
+            if (suggestion) {
+                content += '<br><br><strong>解決方法:</strong><br>' + suggestion;
+            }
+            
+            error.innerHTML = content;
             transcriptionArea.appendChild(error);
             transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
         }
