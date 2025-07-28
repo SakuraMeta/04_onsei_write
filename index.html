@@ -98,6 +98,26 @@
             box-shadow: 0 10px 20px rgba(156, 39, 176, 0.3);
         }
 
+        .save-btn {
+            background: linear-gradient(45deg, #2196f3, #1976d2);
+            color: white;
+        }
+
+        .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(33, 150, 243, 0.3);
+        }
+
+        .copy-btn {
+            background: linear-gradient(45deg, #607d8b, #455a64);
+            color: white;
+        }
+
+        .copy-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(96, 125, 139, 0.3);
+        }
+
         .network-status {
             text-align: center;
             margin: 15px 0;
@@ -258,6 +278,11 @@
             <button id="clearBtn" class="clear-btn">履歴クリア</button>
             <button id="testBtn" class="test-btn">接続テスト</button>
         </div>
+        
+        <div class="controls">
+            <button id="saveBtn" class="save-btn">💾 テキスト保存</button>
+            <button id="copyBtn" class="copy-btn">📋 コピー</button>
+        </div>
 
         <div id="networkStatus" class="network-status">
             <span id="networkIndicator" class="network-indicator">●</span>
@@ -287,11 +312,15 @@
         let recognition;
         let isRecording = false;
         let transcriptionHistory = [];
+        let errorCount = 0;
+        let maxErrors = 3;
 
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const clearBtn = document.getElementById('clearBtn');
         const testBtn = document.getElementById('testBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const copyBtn = document.getElementById('copyBtn');
         const status = document.getElementById('status');
         const transcriptionArea = document.getElementById('transcriptionArea');
         const recordingIndicator = document.getElementById('recordingIndicator');
@@ -318,6 +347,14 @@
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
+            recognition.maxAlternatives = 1;
+            
+            // タイムアウト設定でネットワークエラーを減らす
+            recognition.serviceURI = 'wss://www.google.com/speech-api/v2/recognize';
+            
+            // エラーカウンター
+            let errorCount = 0;
+            const maxErrors = 3;
             
             recognition.onstart = function() {
                 console.log('音声認識開始');
@@ -351,41 +388,48 @@
             
             recognition.onerror = function(event) {
                 console.error('音声認識エラー:', event.error);
+                errorCount++;
                 
                 let errorMessage = '音声認識エラー: ' + event.error;
                 let suggestion = '';
                 
                 switch(event.error) {
                     case 'network':
-                        errorMessage = 'ネットワークエラー: インターネット接続を確認してください';
-                        suggestion = '・ インターネット接続を確認<br>・ VPNやファイアウォールの設定を確認<br>・ しばらく待ってから再試行';
+                        errorMessage = `ネットワークエラー (エラー${errorCount}/${maxErrors}): Web Speech APIに接続できません`;
+                        suggestion = `・ 別のブラウザで試す (Edge, Firefox)<br>・ シークレットモードで試す<br>・ VPNを無効にする<br>・ DNSを 8.8.8.8 に変更<br>・ ブラウザのマイク設定を確認`;
+                        
+                        // エラーが続く場合は代替手段を提案
+                        if (errorCount >= maxErrors) {
+                            suggestion += `<br><br><strong>⚠️ 継続的なエラーが発生しています</strong><br>・ ブラウザを変更してください<br>・ ネットワーク環境を確認してください<br>・ 時間をおいて再度お試しください`;
+                            errorCount = 0; // リセット
+                        }
                         break;
                     case 'not-allowed':
                         errorMessage = 'マイクアクセスが拒否されました';
-                        suggestion = '・ ブラウザのマイク許可を確認<br>・ アドレスバーのマイクアイコンをクリックして許可';
+                        suggestion = '・ アドレスバーの🎤アイコンをクリック<br>・ 「許可」を選択<br>・ ブラウザ設定でマイクを有効化<br>・ ページを再読み込み';
                         break;
                     case 'no-speech':
                         errorMessage = '音声が検出されませんでした';
-                        suggestion = '・ マイクの音量を確認<br>・ よりはっきりと話してください';
+                        suggestion = '・ マイクに近づいて話す<br>・ マイクの音量を上げる<br>・ 背景ノイズを減らす<br>・ はっきりと発声する';
                         break;
                     case 'audio-capture':
                         errorMessage = 'オーディオキャプチャエラー';
-                        suggestion = '・ マイクが正しく接続されているか確認<br>・ 他のアプリがマイクを使用していないか確認';
+                        suggestion = '・ マイクが正しく接続されているか確認<br>・ 他のアプリを終了してください<br>・ マイクを再接続してください';
                         break;
                     case 'service-not-allowed':
                         errorMessage = '音声認識サービスが利用できません';
-                        suggestion = '・ ブラウザを更新してください<br>・ Chrome、Edge、Safariの最新版をお試しください';
+                        suggestion = '・ Microsoft Edge をお試しください<br>・ ブラウザを最新版に更新<br>・ シークレットモードで試す<br>・ ブラウザのキャッシュをクリア';
                         break;
                     default:
-                        suggestion = '・ ブラウザを再読み込みしてください<br>・ シークレットモードでないことを確認';
+                        suggestion = '・ Microsoft Edge または Firefox で試す<br>・ シークレットモードで試す<br>・ ブラウザを再読み込み<br>・ ブラウザを再起動';
                 }
                 
                 addError(errorMessage, suggestion);
                 
-                // ネットワークエラーの場合、自動再試行を提案
-                if (event.error === 'network') {
+                // ネットワークエラーの場合のみ自動再試行を提案（初回のみ）
+                if (event.error === 'network' && errorCount === 1) {
                     setTimeout(() => {
-                        if (confirm('ネットワークエラーが発生しました。自動で再試行しますか？')) {
+                        if (confirm('ネットワークエラーが発生しました。\n\n推奨解決方法：\n1. Microsoft Edge でこのサイトを開く\n2. シークレットモードで試す\n\n自動で再試行しますか？')) {
                             checkNetworkAndRetry();
                         }
                     }, 2000);
@@ -402,7 +446,25 @@
                 }
             };
         } else {
-            addError('このブラウザは音声認識をサポートしていません。Chrome、Edge、Safari等をお使いください。');
+            // ブラウザ検出
+            const userAgent = navigator.userAgent;
+            let browserName = '不明';
+            let recommendation = '';
+            
+            if (userAgent.includes('Chrome')) {
+                browserName = 'Chrome';
+                recommendation = 'Chromeではネットワーク制限があります。<strong>Microsoft Edge</strong> でお試しください。';
+            } else if (userAgent.includes('Firefox')) {
+                browserName = 'Firefox';
+                recommendation = 'Firefoxでは音声認識が制限されています。<strong>Microsoft Edge</strong> をお試しください。';
+            } else if (userAgent.includes('Safari')) {
+                browserName = 'Safari';
+                recommendation = 'Safariでは音声認識が制限されています。<strong>Microsoft Edge</strong> をお試しください。';
+            } else {
+                recommendation = '<strong>Microsoft Edge</strong> または <strong>Google Chrome</strong> をお試しください。';
+            }
+            
+            addError(`このブラウザ (${browserName}) は音声認識をサポートしていません。`, recommendation);
             startBtn.disabled = true;
         }
 
@@ -441,6 +503,16 @@
         // 接続テスト
         testBtn.addEventListener('click', function() {
             checkNetworkStatus(true);
+        });
+
+        // テキスト保存
+        saveBtn.addEventListener('click', function() {
+            saveTranscriptionToFile();
+        });
+
+        // テキストコピー
+        copyBtn.addEventListener('click', function() {
+            copyTranscriptionToClipboard();
         });
 
         function stopRecording() {
@@ -602,6 +674,77 @@
             error.innerHTML = content;
             transcriptionArea.appendChild(error);
             transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+        }
+
+        // テキストをファイルに保存
+        function saveTranscriptionToFile() {
+            if (transcriptionHistory.length === 0) {
+                addInfo('保存するテキストがありません。まず音声認識を実行してください。');
+                return;
+            }
+
+            try {
+                // テキストを結合
+                const allText = transcriptionHistory.map(item => 
+                    `[${item.timestamp}] ${item.text} (信頼度: ${Math.round(item.confidence * 100)}%)`
+                ).join('\n');
+
+                // ファイル名を生成（日時付き）
+                const now = new Date();
+                const dateStr = now.getFullYear() + 
+                    String(now.getMonth() + 1).padStart(2, '0') + 
+                    String(now.getDate()).padStart(2, '0') + '_' +
+                    String(now.getHours()).padStart(2, '0') + 
+                    String(now.getMinutes()).padStart(2, '0');
+                const filename = `音声文字起こし_${dateStr}.txt`;
+
+                // Blobを作成してダウンロード
+                const blob = new Blob([allText], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                addInfo(`テキストをファイルに保存しました: ${filename}`);
+            } catch (error) {
+                addError('ファイルの保存に失敗しました: ' + error.message);
+            }
+        }
+
+        // テキストをクリップボードにコピー
+        async function copyTranscriptionToClipboard() {
+            if (transcriptionHistory.length === 0) {
+                addInfo('コピーするテキストがありません。まず音声認識を実行してください。');
+                return;
+            }
+
+            try {
+                // テキストを結合（シンプル版）
+                const allText = transcriptionHistory.map(item => item.text).join('\n');
+
+                // クリップボードAPIを使用
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(allText);
+                    addInfo('テキストをクリップボードにコピーしました。');
+                } else {
+                    // フォールバック: テキストエリアを作成して選択
+                    const textArea = document.createElement('textarea');
+                    textArea.value = allText;
+                    textArea.style.position = 'fixed';
+                    textArea.style.opacity = '0';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    addInfo('テキストをクリップボードにコピーしました。');
+                }
+            } catch (error) {
+                addError('クリップボードへのコピーに失敗しました: ' + error.message);
+            }
         }
     </script>
 </body>
