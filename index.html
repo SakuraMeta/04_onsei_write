@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リアルタイム音声文字起こし</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(76, 175, 80, 0.3);
+        }
+
+        .stop-btn {
+            background: linear-gradient(45deg, #f44336, #da190b);
+            color: white;
+        }
+
+        .stop-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(244, 67, 54, 0.3);
+        }
+
+        .clear-btn {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            color: white;
+        }
+
+        .clear-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 152, 0, 0.3);
+        }
+
+        .test-btn {
+            background: linear-gradient(45deg, #9c27b0, #7b1fa2);
+            color: white;
+        }
+
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(156, 39, 176, 0.3);
+        }
+
+        .network-status {
+            text-align: center;
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+        }
+
+        .network-indicator {
+            font-size: 12px;
+            margin-right: 8px;
+        }
+
+        .network-indicator.online {
+            color: #4caf50;
+        }
+
+        .network-indicator.offline {
+            color: #f44336;
+        }
+
+        .network-indicator.testing {
+            color: #ff9800;
+            animation: pulse 1s infinite;
+        }
+
+        .status {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .status.recording {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 2px solid #4caf50;
+        }
+
+        .status.stopped {
+            background: #ffebee;
+            color: #c62828;
+            border: 2px solid #f44336;
+        }
+
+        .status.connected {
+            background: #e3f2fd;
+            color: #1565c0;
+            border: 2px solid #2196f3;
+        }
+
+        .transcription-area {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            min-height: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .transcription-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .text {
+            font-size: 16px;
+            color: #333;
+        }
+
+        .recording-indicator {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .recording-indicator.active {
+            display: block;
+        }
+
+        .pulse {
+            width: 20px;
+            height: 20px;
+            background: #f44336;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1.5s infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #f44336;
+        }
+
+        .info {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #2196f3;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .github-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .github-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 リアルタイム音声文字起こし</h1>
+        
+        <div class="controls">
+            <button id="startBtn" class="start-btn">録音開始</button>
+            <button id="stopBtn" class="stop-btn" disabled>録音停止</button>
+            <button id="clearBtn" class="clear-btn">履歴クリア</button>
+            <button id="testBtn" class="test-btn">接続テスト</button>
+        </div>
+
+        <div id="networkStatus" class="network-status">
+            <span id="networkIndicator" class="network-indicator">●</span>
+            <span id="networkText">接続状態を確認中...</span>
+        </div>
+
+        <div id="status" class="status connected">準備完了</div>
+        
+        <div class="recording-indicator" id="recordingIndicator">
+            <span class="pulse"></span>
+            録音中...
+        </div>
+
+        <div class="transcription-area" id="transcriptionArea">
+            <p style="text-align: center; color: #666; font-style: italic;">
+                録音開始ボタンを押して音声認識を開始してください
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>🚀 Powered by Web Speech API | 
+            <a href="https://github.com/SakuraMeta/04_onsei_write" target="_blank" class="github-link">GitHub</a></p>
+        </div>
+    </div>
+
+    <script>
+        let recognition;
+        let isRecording = false;
+        let transcriptionHistory = [];
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const testBtn = document.getElementById('testBtn');
+        const status = document.getElementById('status');
+        const transcriptionArea = document.getElementById('transcriptionArea');
+        const recordingIndicator = document.getElementById('recordingIndicator');
+        const networkIndicator = document.getElementById('networkIndicator');
+        const networkText = document.getElementById('networkText');
+
+        // ページ読み込み時にネットワーク状態をチェック
+        checkNetworkStatus();
+        
+        // オンライン/オフライン状態の監視
+        window.addEventListener('online', () => {
+            updateNetworkStatus(true, 'オンライン - 音声認識が利用可能');
+        });
+        
+        window.addEventListener('offline', () => {
+            updateNetworkStatus(false, 'オフライン - インターネット接続を確認してください');
+        });
+
+        // Web Speech API の初期化
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ja-JP';
+            
+            recognition.onstart = function() {
+                console.log('音声認識開始');
+                status.textContent = '録音中...';
+                status.className = 'status recording';
+                recordingIndicator.classList.add('active');
+            };
+            
+            recognition.onresult = function(event) {
+                let finalTranscript = '';
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    const confidence = event.results[i][0].confidence;
+                    
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                        // 最終結果を保存・表示
+                        addTranscription(transcript, Date.now() / 1000, confidence || 0);
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                // 暫定結果を表示（オプション）
+                if (interimTranscript) {
+                    updateInterimResult(interimTranscript);
+                }
+            };
+            
+            recognition.onerror = function(event) {
+                console.error('音声認識エラー:', event.error);
+                
+                let errorMessage = '音声認識エラー: ' + event.error;
+                let suggestion = '';
+                
+                switch(event.error) {
+                    case 'network':
+                        errorMessage = 'ネットワークエラー: インターネット接続を確認してください';
+                        suggestion = '・ インターネット接続を確認<br>・ VPNやファイアウォールの設定を確認<br>・ しばらく待ってから再試行';
+                        break;
+                    case 'not-allowed':
+                        errorMessage = 'マイクアクセスが拒否されました';
+                        suggestion = '・ ブラウザのマイク許可を確認<br>・ アドレスバーのマイクアイコンをクリックして許可';
+                        break;
+                    case 'no-speech':
+                        errorMessage = '音声が検出されませんでした';
+                        suggestion = '・ マイクの音量を確認<br>・ よりはっきりと話してください';
+                        break;
+                    case 'audio-capture':
+                        errorMessage = 'オーディオキャプチャエラー';
+                        suggestion = '・ マイクが正しく接続されているか確認<br>・ 他のアプリがマイクを使用していないか確認';
+                        break;
+                    case 'service-not-allowed':
+                        errorMessage = '音声認識サービスが利用できません';
+                        suggestion = '・ ブラウザを更新してください<br>・ Chrome、Edge、Safariの最新版をお試しください';
+                        break;
+                    default:
+                        suggestion = '・ ブラウザを再読み込みしてください<br>・ シークレットモードでないことを確認';
+                }
+                
+                addError(errorMessage, suggestion);
+                
+                // ネットワークエラーの場合、自動再試行を提案
+                if (event.error === 'network') {
+                    setTimeout(() => {
+                        if (confirm('ネットワークエラーが発生しました。自動で再試行しますか？')) {
+                            checkNetworkAndRetry();
+                        }
+                    }, 2000);
+                }
+                
+                stopRecording();
+            };
+            
+            recognition.onend = function() {
+                console.log('音声認識終了');
+                if (isRecording) {
+                    // 自動的に再開（連続認識）
+                    recognition.start();
+                }
+            };
+        } else {
+            addError('このブラウザは音声認識をサポートしていません。Chrome、Edge、Safari等をお使いください。');
+            startBtn.disabled = true;
+        }
+
+        // 録音開始
+        startBtn.addEventListener('click', function() {
+            if (recognition) {
+                try {
+                    recognition.start();
+                    isRecording = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    
+                    // 最初の録音開始時にエリアをクリア
+                    if (transcriptionArea.children.length === 1) {
+                        transcriptionArea.innerHTML = '';
+                    }
+                } catch (error) {
+                    addError('音声認識の開始に失敗しました: ' + error.message);
+                }
+            }
+        });
+
+        // 録音停止
+        stopBtn.addEventListener('click', function() {
+            stopRecording();
+        });
+
+        // 履歴クリア
+        clearBtn.addEventListener('click', function() {
+            if (confirm('文字起こし履歴をクリアしますか？')) {
+                transcriptionHistory = [];
+                transcriptionArea.innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">録音開始ボタンを押して音声認識を開始してください</p>';
+            }
+        });
+
+        // 接続テスト
+        testBtn.addEventListener('click', function() {
+            checkNetworkStatus(true);
+        });
+
+        function stopRecording() {
+            if (recognition && isRecording) {
+                recognition.stop();
+                isRecording = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                status.textContent = '録音停止';
+                status.className = 'status stopped';
+                recordingIndicator.classList.remove('active');
+            }
+        }
+
+        // 文字起こし結果を表示
+        function addTranscription(text, timestamp, confidence) {
+            const item = document.createElement('div');
+            item.className = 'transcription-item';
+            
+            const time = new Date(timestamp * 1000).toLocaleTimeString();
+            const confidenceText = confidence ? ` (信頼度: ${Math.round(confidence * 100)}%)` : '';
+            
+            item.innerHTML = `
+                <div class="timestamp">${time}${confidenceText}</div>
+                <div class="text">${text}</div>
+            `;
+            
+            transcriptionArea.appendChild(item);
+            transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+            
+            // 履歴に保存
+            transcriptionHistory.push({
+                text: text,
+                timestamp: timestamp,
+                confidence: confidence
+            });
+        }
+
+        // 暫定結果を表示
+        function updateInterimResult(text) {
+            let interimElement = document.getElementById('interim-result');
+            
+            if (!interimElement) {
+                interimElement = document.createElement('div');
+                interimElement.id = 'interim-result';
+                interimElement.className = 'transcription-item';
+                interimElement.style.opacity = '0.6';
+                interimElement.style.fontStyle = 'italic';
+                transcriptionArea.appendChild(interimElement);
+            }
+            
+            interimElement.innerHTML = `
+                <div class="timestamp">認識中...</div>
+                <div class="text">${text}</div>
+            `;
+            
+            transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+        }
+
+        // ネットワーク状態を更新
+        function updateNetworkStatus(isOnline, message) {
+            if (isOnline) {
+                networkIndicator.className = 'network-indicator online';
+                networkText.textContent = message;
+            } else {
+                networkIndicator.className = 'network-indicator offline';
+                networkText.textContent = message;
+            }
+        }
+        
+        // ネットワーク状態をチェック
+        function checkNetworkStatus(showDetails = false) {
+            if (showDetails) {
+                networkIndicator.className = 'network-indicator testing';
+                networkText.textContent = 'ネットワーク接続をテスト中...';
+                addInfo('ネットワーク接続テストを開始します...');
+            }
+            
+            // 基本的なオンライン状態をチェック
+            if (!navigator.onLine) {
+                updateNetworkStatus(false, 'オフライン - インターネット接続がありません');
+                if (showDetails) {
+                    addError('インターネット接続がありません', 'WiFi/有線接続を確認してください');
+                }
+                return;
+            }
+            
+            // Google APIへの接続テスト
+            fetch('https://www.google.com/favicon.ico', {
+                method: 'HEAD',
+                mode: 'no-cors',
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(5000)
+            })
+            .then(() => {
+                updateNetworkStatus(true, 'オンライン - 音声認識が利用可能');
+                if (showDetails) {
+                    addInfo('✅ ネットワーク接続テスト成功 - 音声認識が利用可能です');
+                }
+            })
+            .catch((error) => {
+                updateNetworkStatus(false, 'ネットワークエラー - 接続に問題があります');
+                if (showDetails) {
+                    addError('ネットワーク接続テストに失敗しました', 
+                        '・ WiFi/有線接続を確認<br>・ プロキシ設定を確認<br>・ ファイアウォール設定を確認<br>・ VPN接続を確認');
+                }
+            });
+        }
+
+        // ネットワーク接続チェック（再試行用）
+        function checkNetworkAndRetry() {
+            addInfo('ネットワーク接続を確認しています...');
+            
+            // オンライン状態をチェック
+            if (!navigator.onLine) {
+                addError('インターネット接続がありません', 'ネットワーク接続を確認してから再試行してください');
+                return;
+            }
+            
+            // Google APIへの接続テスト
+            fetch('https://www.google.com/favicon.ico', {
+                method: 'HEAD',
+                mode: 'no-cors',
+                cache: 'no-cache'
+            })
+            .then(() => {
+                addInfo('ネットワーク接続OK - 音声認識を再開します');
+                setTimeout(() => {
+                    if (!isRecording) {
+                        startBtn.click();
+                    }
+                }, 1000);
+            })
+            .catch(() => {
+                addError('インターネット接続に問題があります', 
+                    '・ WiFi/有線接続を確認<br>・ プロキシ設定を確認<br>・ ファイアウォール設定を確認');
+            });
+        }
+        
+        // 情報メッセージを表示
+        function addInfo(message) {
+            const info = document.createElement('div');
+            info.className = 'info';
+            info.textContent = message;
+            transcriptionArea.appendChild(info);
+            transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+        }
+
+        // エラーメッセージを表示
+        function addError(message, suggestion = '') {
+            const error = document.createElement('div');
+            error.className = 'error';
+            
+            let content = message;
+            if (suggestion) {
+                content += '<br><br><strong>解決方法:</strong><br>' + suggestion;
+            }
+            
+            error.innerHTML = content;
+            transcriptionArea.appendChild(error);
+            transcriptionArea.scrollTop = transcriptionArea.scrollHeight;
+        }
+    </script>
+</body>
+</html>
